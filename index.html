@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+    <title>日本列島 天気マップ</title>
+    <script defer src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script defer src="https://cdn.babylonjs.com/addons/babylonjs.addons.min.js"></script>
+    <script defer src="https://cdn.babylonjs.com/materialsLibrary/babylon.waterMaterial.js"></script>
+    <script defer src="https://cdn.jsdelivr.net/gh/BabylonJS/Extensions@master/DynamicTerrain/dist/babylon.dynamicTerrain.min.js"></script>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+      }
+      #Canvas {
+        width: 100% !important;
+        height: 100vh !important;
+        background: #000000;
+      }
+      canvas {
+        width: 100% !important;
+        height: 100vh !important;
+        outline: none;
+      }
+
+      /* ===== 共通オーバーレイUI ===== */
+      .overlay {
+        position: fixed;
+        z-index: 10;
+        font-family: "Segoe UI", "Hiragino Kaku Gothic ProN", sans-serif;
+        color: #1cf01c;
+        text-shadow: 0 0 6px rgba(30, 240, 30, 0.6);
+        user-select: none;
+      }
+      .panel {
+        background: rgba(0, 0, 0, 0.5);
+        border: 1px solid rgba(60, 220, 60, 0.5);
+        border-radius: 10px;
+      }
+      .fade-ui {
+        transition: opacity 0.4s ease;
+      }
+      .hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+
+      /* 地図ビューUI */
+      #mapTitle {
+        top: 22px;
+        left: 22px;
+        padding: 16px 20px;
+      }
+      #mapTitle .t {
+        font-size: 20px;
+        font-weight: bold;
+        margin-bottom: 6px;
+      }
+      #mapTitle .h {
+        font-size: 12px;
+        opacity: 0.75;
+      }
+      #hoverName {
+        bottom: 30px;
+        left: 0;
+        right: 0;
+        margin: 0 auto;
+        width: max-content;
+        padding: 10px 26px;
+        font-size: 22px;
+        font-weight: bold;
+        letter-spacing: 2px;
+        min-height: 1em;
+        opacity: 0;
+        transition: opacity 0.2s ease;
+      }
+
+      /* 時計ビューUI */
+      #backBtn {
+        top: 22px;
+        left: 22px;
+        padding: 10px 18px;
+        font-size: 14px;
+        letter-spacing: 1px;
+        text-decoration: none;
+        cursor: pointer;
+        transition: background 0.2s, box-shadow 0.2s, opacity 0.4s ease;
+      }
+      #backBtn:hover {
+        background: rgba(30, 240, 30, 0.2);
+        box-shadow: 0 0 12px rgba(30, 240, 30, 0.5);
+      }
+      #regionLabel {
+        top: 22px;
+        left: 0;
+        right: 0;
+        margin: 0 auto;
+        width: max-content;
+        max-width: 80%;
+        padding: 8px 22px;
+        font-size: 20px;
+        font-weight: bold;
+        letter-spacing: 2px;
+      }
+      /* 傘メモ（コードで判定・Jev不使用） */
+      #umbrellaNote {
+        top: 66px;
+        left: 0;
+        right: 0;
+        margin: 0 auto;
+        width: max-content;
+        max-width: 82%;
+        font-size: 14px;
+        letter-spacing: 1px;
+        color: #9fe8ff;
+        text-shadow: 0 0 6px rgba(120, 200, 255, 0.5);
+        opacity: 0;
+        transition: opacity 0.3s ease;
+      }
+      /* お出かけ判断（Jev・自由文入力） */
+      #outingBox {
+        bottom: 24px;
+        left: 0;
+        right: 0;
+        margin: 0 auto;
+        width: max-content;
+        max-width: 88%;
+        padding: 12px 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        align-items: center;
+      }
+      #outingBox .ob-row {
+        display: flex;
+        gap: 8px;
+      }
+      #outingInput {
+        width: min(60vw, 360px);
+        padding: 8px 12px;
+        background: rgba(0, 0, 0, 0.4);
+        border: 1px solid rgba(60, 220, 60, 0.6);
+        border-radius: 8px;
+        color: #cffccf;
+        font-size: 14px;
+        outline: none;
+        user-select: text;
+      }
+      #outingInput::placeholder {
+        color: rgba(120, 220, 120, 0.5);
+      }
+      #outingBtn {
+        padding: 8px 16px;
+        background: rgba(30, 240, 30, 0.15);
+        border: 1px solid rgba(60, 220, 60, 0.6);
+        border-radius: 8px;
+        color: #1cf01c;
+        font-size: 14px;
+        cursor: pointer;
+        transition: background 0.2s, box-shadow 0.2s;
+      }
+      #outingBtn:hover {
+        background: rgba(30, 240, 30, 0.3);
+        box-shadow: 0 0 12px rgba(30, 240, 30, 0.5);
+      }
+      #outingPresets {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        justify-content: center;
+      }
+      #outingPresets .chip {
+        padding: 4px 10px;
+        border: 1px solid rgba(60, 220, 60, 0.4);
+        border-radius: 999px;
+        font-size: 12px;
+        color: #9df09d;
+        cursor: pointer;
+        transition: background 0.2s;
+      }
+      #outingPresets .chip:hover {
+        background: rgba(30, 240, 30, 0.2);
+      }
+      #outingResult {
+        margin-top: 2px;
+        text-align: center;
+        transition: color 0.3s ease, text-shadow 0.3s ease;
+      }
+      #outingResult .cmt {
+        font-size: 16px;
+        font-weight: bold;
+      }
+      #outingResult .cmt2 {
+        font-size: 13px;
+        line-height: 1.5;
+        margin-top: 3px;
+        opacity: 0.9;
+      }
+      #outingResult .sub {
+        font-size: 12px;
+        opacity: 0.7;
+        margin-top: 2px;
+      }
+
+      /* 暗転フェード */
+      #fadeOverlay {
+        position: fixed;
+        inset: 0;
+        z-index: 20;
+        background: #000000;
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.5s ease;
+      }
+      #fadeOverlay.show {
+        opacity: 1;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <div id="Canvas">
+        <canvas id="renderCanvasList"></canvas>
+      </div>
+
+      <!-- 地図ビュー -->
+      <div id="mapTitle" class="overlay panel fade-ui">
+        <div class="t">日本列島 天気マップ</div>
+        <div class="h">地域のピンをクリックすると<br />その地域の天気画面へ切り替わります</div>
+      </div>
+      <div id="hoverName" class="overlay panel"></div>
+
+      <!-- 時計ビュー -->
+      <div id="backBtn" class="overlay panel fade-ui hidden">← 日本地図へ戻る</div>
+      <div id="regionLabel" class="overlay panel fade-ui hidden"></div>
+      <div id="umbrellaNote" class="overlay fade-ui hidden"></div>
+      <div id="outingBox" class="overlay panel fade-ui hidden">
+        <div class="ob-row">
+          <input id="outingInput" type="text" placeholder="お出かけの予定（例：犬の散歩に行きたい）" />
+          <button id="outingBtn">判定</button>
+        </div>
+        <div id="outingPresets">
+          <span class="chip">犬の散歩に行きたい</span>
+          <span class="chip">洗濯物を外に干したい</span>
+          <span class="chip">子どもと公園で遊びたい</span>
+          <span class="chip">ジョギングしたい</span>
+        </div>
+        <div id="outingResult" class="hidden"></div>
+      </div>
+
+      <!-- 暗転 -->
+      <div id="fadeOverlay"></div>
+    </main>
+
+    <script type="text/javascript">
+      class WeatherMapApp {
+        constructor() {
+          // u,v は地図画像上の正規化位置（u:左→右, v:上→下）。地図が湾曲しているため
+          // 緯度経度からの計算ではなく、各都市を実際の地図位置に合わせて手動調整した値。
+          this.regions = [
+            { region: "北海道", city: "札幌市",   latitude: 43.0618, longitude: 141.3545, u: 0.7301, v: 0.1722 },
+            { region: "東北",   city: "仙台市",   latitude: 38.2682, longitude: 140.8694, u: 0.6772, v: 0.4057 },
+            { region: "関東",   city: "東京都",   latitude: 35.6762, longitude: 139.6503, u: 0.6177, v: 0.5387 },
+            { region: "中部",   city: "名古屋市", latitude: 35.1815, longitude: 136.9066, u: 0.5261, v: 0.5847 },
+            { region: "近畿",   city: "大阪市",   latitude: 34.6937, longitude: 135.5023, u: 0.4339, v: 0.6396 },
+            { region: "中国",   city: "広島市",   latitude: 34.3853, longitude: 132.4553, u: 0.3164, v: 0.6142 },
+            { region: "四国",   city: "松山市",   latitude: 33.8392, longitude: 132.7657, u: 0.3663, v: 0.6473 },
+            { region: "九州",   city: "福岡市",   latitude: 33.5902, longitude: 130.4017, u: 0.1962, v: 0.6718 },
+            { region: "沖縄",   city: "那覇市",   latitude: 26.2124, longitude: 127.6809, u: 0.0574, v: 0.9200 },
+          ];
+          this.view = "map"; // "map" | "clock" | "transition"
+          this.init();
+        }
+
+        /* ============ 共通ユーティリティ ============ */
+        toRadians(d) { return d * (Math.PI / 180); }
+
+        getCurrentTimeInfo() {
+          const now = new Date();
+          const hour = now.getHours() + now.getMinutes() / 60;
+          const hours = hour + now.getSeconds() / 3600;
+          return { hour, hours };
+        }
+
+        getWeatherLabel(code) {
+          if (code === 0 || code === 1) return "Sunny";
+          if (code === 2) return "Partly Cloudy";
+          if (code === 3) return "Cloudy";
+          if (code === 45 || code === 48) return "Fog";
+          if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return "Rain";
+          if ((code >= 71 && code <= 77) || (code >= 85 && code <= 86)) return "Snow";
+          if (code === 95 || code === 96 || code === 99) return "Thunderstorm";
+          return "Unknown";
+        }
+
+        async fetchWeather(lat, lon) {
+          try {
+            return await fetch(
+              `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true`
+            ).then((r) => r.json());
+          } catch (e) {
+            console.warn(e);
+            return null;
+          }
+        }
+
+        /* ============ デモ用の天気上書き ============ */
+        // 本物の東京が雨のときしか判定が出ないので、検証用にURLで強制的に雨にできる。
+        //   例) ?demoRain=1&wind=12&winddir=210&temp=15
+        applyDemoOverride(weather) {
+          const p = new URLSearchParams(location.search);
+          if (p.get("demoRain") !== "1") return weather;
+          const cw = { ...(weather?.current_weather || {}) };
+          cw.weathercode = 63; // 雨
+          if (p.has("wind")) cw.windspeed = parseFloat(p.get("wind"));
+          if (p.has("winddir")) cw.winddirection = parseFloat(p.get("winddir"));
+          if (p.has("temp")) cw.temperature = parseFloat(p.get("temp"));
+          if (cw.windspeed == null) cw.windspeed = 10;
+          if (cw.winddirection == null) cw.winddirection = 200;
+          if (cw.temperature == null) cw.temperature = 16;
+          return { ...(weather || {}), current_weather: cw };
+        }
+
+        /* ============ 傘メモ（コードで判定・Jev不使用） ============ */
+        // 「雨か + 風速」の単一軸なのでしきい値で十分。ここは意図的にJevを使わない。
+        // updateUmbrellaNote(weather) {
+        //   const el = document.getElementById("umbrellaNote");
+        //   const cw = weather?.current_weather;
+        //   const label = this.getWeatherLabel(cw?.weathercode ?? 1);
+        //   const raining = label === "Rain" || label === "Thunderstorm";
+        //   if (!raining) {
+        //     el.classList.add("hidden");
+        //     el.style.opacity = "0";
+        //     return;
+        //   }
+        //   const w = cw.windspeed ?? 0;
+        //   let note;
+        //   if (w < 5) note = "☔ 傘があれば十分";
+        //   else if (w < 10) note = "☔ 傘がやや煽られる・風強め";
+        //   else if (w < 15) note = "🌂 横殴りの雨・傘が効きにくい";
+        //   else note = "⚠ 暴風雨・傘は危険";
+        //   el.textContent = `${note}（風速 ${w} m/s）`;
+        //   el.classList.remove("hidden");
+        //   el.style.opacity = "1";
+        // }
+
+        /* ============ お出かけ判断（Jev・自由文の目的 × 天気） ============ */
+        // 自由文の「目的」を天気と突き合わせて適性をScoreで判定。if文では書けない領域。
+        async askOuting(purpose) {
+          const el = document.getElementById("outingResult");
+          const cur = this._current;
+          purpose = (purpose || "").trim();
+          if (!cur?.weather?.current_weather || !purpose) {
+            el.classList.add("hidden");
+            return;
+          }
+          const cw = cur.weather.current_weather;
+          const state = {
+            地域: `${cur.r.region}（${cur.r.city}）`,
+            天気: this.getWeatherLabel(cw.weathercode ?? 1),
+            気温: cw.temperature,
+            風速_ms: cw.windspeed,
+            風向_deg: cw.winddirection,
+            現地時刻: cw.time,
+            目的: purpose,
+          };
+          el.classList.remove("hidden");
+          el.style.color = "#1cf01c";
+          el.style.textShadow = "none";
+          el.innerHTML = `<div class="cmt">🤔 判定中…</div>`;
+          try {
+            const res = await fetch("/api/judge", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(state),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+            this.renderOuting(el, data, purpose);
+          } catch (e) {
+            el.innerHTML =
+              `<div class="cmt">判定を取得できませんでした</div>` +
+              `<div class="sub">${e.message ?? e}</div>`;
+          }
+        }
+
+        // Jevのscore(0..4／高いほど好適)を2文のコメントに組み立てる。
+        // 1文目=判定（Jev由来）、2文目=天気の実データから理由（コード由来）。文生成はコード側の仕事。
+        renderOuting(el, data, purpose) {
+          const levels = [
+            { verdict: "今はやめておきましょう。", tail: "落ち着いてからの方が安心です。", color: "#f0401c" },
+            { verdict: "あまりおすすめできません。", tail: "どうしてもなら短時間で切り上げを。", color: "#f0a01c" },
+            { verdict: "まあまあ、といったところ。", tail: "大きな支障はありませんが快適とまでは言えません。", color: "#d8f01c" },
+            { verdict: "問題なく楽しめそうです。", tail: "気持ちよく出かけられます。", color: "#7cf01c" },
+            { verdict: "絶好のコンディションです！", tail: "迷わず出かけましょう。", color: "#1cf01c" },
+          ];
+          const idx = Math.max(0, Math.min(levels.length - 1, Math.round(data.score ?? 0)));
+          const lv = levels[idx];
+          const pct = Math.round((data.confidence ?? 0) * 100);
+
+          // 天気の実データを日本語フレーズに（コードで組み立て）
+          const cw = this._current?.weather?.current_weather || {};
+          const w = cw.windspeed;
+          const t = cw.temperature;
+          const weatherJa = {
+            Sunny: "晴れ", "Partly Cloudy": "薄曇り", Cloudy: "曇り", Fog: "霧",
+            Rain: "雨", Snow: "雪", Thunderstorm: "雷雨", Unknown: "不明",
+          }[this.getWeatherLabel(cw.weathercode ?? 1)];
+          const windPhrase =
+            w == null ? "" :
+            w >= 15 ? `暴風（${w}m/s）` :
+            w >= 10 ? `強い風（${w}m/s）` :
+            w >= 5 ? `やや風あり（${w}m/s）` : `穏やかな風（${w}m/s）`;
+          const tempPhrase =
+            t == null ? "" :
+            t >= 30 ? "厳しい暑さ" :
+            t >= 25 ? "やや暑い" :
+            t >= 15 ? "過ごしやすい気温" :
+            t >= 5 ? "肌寒い" : "厳しい寒さ";
+          const cond = [weatherJa, windPhrase, tempPhrase].filter(Boolean).join("・");
+
+          el.style.color = lv.color;
+          el.style.textShadow = `0 0 6px ${lv.color}99`;
+          el.innerHTML =
+            `<div class="cmt">「${purpose}」なら、${lv.verdict}</div>` +
+            `<div class="cmt2">今は${cond}。${lv.tail}</div>` +
+            `<div class="sub">おすすめ度 ${(data.score ?? 0).toFixed(2)}/4 ・ 確信度 ${pct}%</div>`;
+        }
+
+        // 入力欄・ボタン・プリセットの配線（DOMは読み込み済み）
+        wireOutingUI() {
+          const input = document.getElementById("outingInput");
+          const btn = document.getElementById("outingBtn");
+          const run = () => this.askOuting(input.value);
+          btn.addEventListener("click", run);
+          input.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") run();
+          });
+          document.querySelectorAll("#outingPresets .chip").forEach((chip) => {
+            chip.addEventListener("click", () => {
+              input.value = chip.textContent;
+              this.askOuting(chip.textContent);
+            });
+          });
+        }
+
+        resetOutingBox() {
+          const input = document.getElementById("outingInput");
+          const result = document.getElementById("outingResult");
+          if (input) input.value = "";
+          if (result) {
+            result.classList.add("hidden");
+            result.innerHTML = "";
+          }
+        }
+
+        sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
+
+        /* ============ 起動 ============ */
+        async init() {
+          const canvas = document.getElementById("renderCanvasList");
+          this.engine = new BABYLON.Engine(canvas);
+          this.canvas = canvas;
+
+          if (typeof earcut !== "undefined" && BABYLON.PolygonMeshBuilder) {
+            BABYLON.PolygonMeshBuilder.prototype.bjsEarcut = earcut;
+          }
+
+          // 地図シーンを先に構築（入口）
+          this.map = this.buildMapScene();
+          this.activeScene = this.map.scene;
+
+          this.engine.runRenderLoop(() => {
+            if (this.activeScene) this.activeScene.render();
+          });
+          window.addEventListener("resize", () => this.engine.resize());
+
+          // 戻るボタン
+          document.getElementById("backBtn").addEventListener("click", () => this.goToMap());
+          this.wireOutingUI();
+        }
+
+        /* ============ 地図シーン ============ */
+        buildMapScene() {
+          const scene = new BABYLON.Scene(this.engine);
+          scene.clearColor = new BABYLON.Color4(0.02, 0.04, 0.09, 1);
+
+          const camera = new BABYLON.ArcRotateCamera("mapCam", -Math.PI / 2, 0.95, 20, BABYLON.Vector3.Zero(), scene);
+          camera.attachControl(this.canvas, true);
+          camera.lowerRadiusLimit = 8;
+          camera.upperRadiusLimit = 30;
+          camera.lowerBetaLimit = 0.25;
+          camera.upperBetaLimit = 1.45;
+          this.mapCameraHome = { alpha: -Math.PI / 2, beta: 0.95, radius: 20, target: BABYLON.Vector3.Zero() };
+
+          // 詳細ページと同じ大気（Atmosphere）の光源。太陽光で列島を照らす。
+          const light = new BABYLON.DirectionalLight("Sun", new BABYLON.Vector3(0, 1, 0).normalize(), scene);
+          light.intensity = Math.PI;
+
+          // 地図配置（水平なジオラマ）
+          // baseY: 日本列島全体の高さ（水面より上に持ち上げて水没を防ぐ）
+          const MAP = { width: 15, height: 15, maxHeight: .2, subdivisions: 500, scale: 1, baseY: 0.02 };
+          this.MAP = MAP;
+
+          const root = new BABYLON.TransformNode("japanRoot", scene);
+          root.scaling.setAll(MAP.scale);
+          root.position.y = MAP.baseY;
+          this.mapRoot = root;
+
+          // 表面テクスチャ（緑の日本）＋ シルエットを不透明マスクにして海をくり抜く
+          // 昼夜で明るさが変わらないよう、太陽光に依存しない自発光（disableLighting）で表示する
+          const mapMat = new BABYLON.StandardMaterial("japanMapMat", scene);
+          const diffuse = new BABYLON.Texture("textures/japan_ground.png", scene);
+          mapMat.diffuseTexture = diffuse;
+          const opacity = new BABYLON.Texture("textures/japan_silet.png", scene);
+          opacity.getAlphaFromRGB = true; // 白=陸(不透明) / 黒=海(透明)
+          mapMat.opacityTexture = opacity;
+          mapMat.emissiveTexture = diffuse;                          // 地表テクスチャをそのまま自発光
+          mapMat.emissiveColor = new BABYLON.Color3(1, 1, 1);
+          mapMat.disableLighting = true;                             // 太陽の昼夜に左右されず常に一定
+          mapMat.backFaceCulling = false;
+
+          // ハイトマップ（白い日本＝陸地を隆起）で立体化
+          const map = BABYLON.MeshBuilder.CreateGroundFromHeightMap(
+            "japanMap",
+            "textures/japan_silet.png",
+            {
+              width: MAP.width,
+              height: MAP.height,
+              subdivisions: MAP.subdivisions,
+              minHeight: 0,
+              maxHeight: MAP.maxHeight,
+              onReady: () => this.placePins(scene, root, map),
+            },
+            scene
+          );
+          map.material = mapMat;
+          map.parent = root;
+          map.isPickable = false;
+
+          // 空（詳細ページと同じ ADDONS.Atmosphere。時間帯で色が変化する物理ベースの大気）
+          const defaultRenderingPipeline = new BABYLON.DefaultRenderingPipeline("Default", true, scene, [camera]);
+          defaultRenderingPipeline.imageProcessingEnabled = true;
+          defaultRenderingPipeline.imageProcessing.ditheringEnabled = true;
+          defaultRenderingPipeline.imageProcessing.toneMappingEnabled = true;
+          defaultRenderingPipeline.imageProcessing.toneMappingType = 0.1;
+
+          const atmosphere = new ADDONS.Atmosphere("Atmosphere", scene, [light]);
+          atmosphere.additionalDiffuseSkyIrradianceIntensity = 0.01;
+          atmosphere.minimumMultiScatteringIntensity = 0.2;
+          atmosphere.physicalProperties.mieScatteringScale = 1.0;
+          atmosphere.physicalProperties.ozoneAbsorptionScale = 2.4;
+          atmosphere.multiScatteringIntensity = 1;
+          atmosphere.isLinearSpaceComposition = true;
+          atmosphere.isLinearSpaceLight = true;
+          atmosphere.isAerialPerspectiveLutEnabled = false;
+          atmosphere.isSkyViewLutEnabled = false;
+
+          // 空は露出カーブで昼夜を表現。陸・ピンは露出を打ち消す自発光にして明るさを一定に保つ。
+          // 明るさ(landBright/k)を露出の最小値(minExp)以下に揃えると emissiveColor が 1 を超えず
+          // （エンジンのクランプを回避でき）、昼夜で陸の見た目が変わらなくなる。
+          const minExp = 1.0;
+          const maxExp = 6.0;
+          const landBright = 1.0;
+          scene.onBeforeRenderObservable.add(() => {
+            const { hour, hours } = this.getCurrentTimeInfo();
+            const sunAngle = (hours / 24) * 2 * Math.PI - Math.PI / 2;
+            light.direction.copyFromFloats(Math.cos(sunAngle), -Math.sin(sunAngle), 0);
+
+            let exposure = minExp;
+            if (hour >= 5 && hour <= 18) {
+              const t = (hour - 5) / (18 - 5);
+              exposure = minExp + (maxExp - minExp) * Math.sin(t * Math.PI);
+            }
+            defaultRenderingPipeline.imageProcessing.exposure = exposure;
+
+            // 露出を打ち消して陸・ピンを一定の明るさに保つ（inv ≤ 1 なのでクランプされない）
+            const inv = landBright / exposure;
+            mapMat.emissiveColor.set(inv, inv, inv);
+            (this.pinMats || []).forEach((pm) => {
+              pm.emissiveColor.copyFrom(pm.metadata.base.scale(pm.metadata.k / exposure));
+            });
+          });
+
+          // 海（WaterMaterial）— 黒(海)部分の下に広い水面を敷く
+          const waterMesh = BABYLON.MeshBuilder.CreateGround("waterMesh", { width: 200, height: 200, subdivisions: 32 }, scene);
+          waterMesh.position.y = -0.05;
+          waterMesh.isPickable = false;
+          // 詳細（時計）ページの海と同じ表現に揃える
+          const water = new BABYLON.WaterMaterial("water", scene, new BABYLON.Vector2(1024, 1024));
+          water.backFaceCulling = true;
+          water.bumpTexture = new BABYLON.Texture("https://assets.babylonjs.com/textures/waterbump.png", scene);
+          water.bumpSuperimpose = true;
+          water.fresnelSeparate = true;
+          water.waveLength = 0.1;
+          water.windDirection = new BABYLON.Vector2(1, 0.4);
+          water.waterColor = new BABYLON.Color3(0.05, 0.2, 0.38);
+          water.colorBlendFactor = 0.7;
+          water.waterColor2 = new BABYLON.Color3(0.08, 0.28, 0.42);
+          water.colorBlendFactor2 = 0.7;
+          water.windForce = -5;
+          // 陸地が水面ギリギリに浮いているため、波の山で列島が水没しないよう
+          // 上下動(waveHeight)は小さく。見た目のさざ波は bumpHeight 側で担保する。
+          water.waveHeight = 0.02;
+          water.bumpHeight = 0.22;
+          water.waveSpeed = 3;
+          water.addToRenderList(map);
+          waterMesh.material = water;
+
+          return { scene, camera, map, root, water };
+        }
+
+        placePins(scene, root, map) {
+          const baseColor = new BABYLON.Color3(1.0, 0.24, 0.22);
+          const hoverName = document.getElementById("hoverName");
+          // 全ピン共通の高さ（地形の起伏に依存させず一定にする）
+          const pinBaseY = this.MAP.maxHeight + 0.15;
+
+          this.regions.forEach((r) => {
+            // 地図画像上の正規化位置 u,v → 地図ローカル座標
+            const x = (r.u - 0.5) * this.MAP.width;
+            const z = (0.5 - r.v) * this.MAP.height;
+
+            const pinMat = new BABYLON.StandardMaterial("pinMat_" + r.region, scene);
+            pinMat.diffuseColor = baseColor;
+            pinMat.emissiveColor = baseColor.scale(0.9);
+            pinMat.specularColor = new BABYLON.Color3(0.2, 0.2, 0.2);
+            // 陸と同様、太陽光に依存しない自発光＋露出補正で昼夜の明るさを一定に保つ。
+            // k はホバー時の発光強度（描画ループが k/露出 で反映する）。
+            pinMat.disableLighting = true;
+            pinMat.metadata = { base: baseColor, k: 0.9 };
+            (this.pinMats = this.pinMats || []).push(pinMat);
+
+            const pin = BABYLON.MeshBuilder.CreateCylinder(
+              "pin_" + r.region,
+              { height: 1.0, diameterTop: 0, diameterBottom: 0.4, tessellation: 16 },
+              scene
+            );
+            pin.material = pinMat;
+
+            const head = BABYLON.MeshBuilder.CreateSphere("pinHead_" + r.region, { diameter: 0.36, segments: 12 }, scene);
+            head.material = pinMat;
+
+            const group = new BABYLON.TransformNode("pinGroup_" + r.region, scene);
+            // ピン全体をまとめて拡縮させたいのでグループにまとめる
+            pin.parent = group; head.parent = group; group.parent = root;
+            group.position.set(x, 0, z);
+            pin.position.set(0, pinBaseY + 0.3, 0);
+            head.position.set(0, pinBaseY + .8, 0);
+
+            const setHover = (on) => {
+              if (this.view !== "map") return;
+              pinMat.metadata.k = on ? 1.05 : 0.9; // 実際の発光は描画ループが露出補正して反映
+              group.scaling.setAll(on ? 1.0 : 1.0);
+              this.canvas.style.cursor = on ? "pointer" : "default";
+              if (on) {
+                hoverName.textContent = `${r.region}（${r.city}）`;
+                hoverName.style.opacity = "1";
+              } else {
+                hoverName.style.opacity = "0";
+              }
+            };
+
+            [pin, head].forEach((mesh) => {
+              mesh.isPickable = true;
+              mesh.actionManager = new BABYLON.ActionManager(scene);
+              mesh.actionManager.registerAction(
+                new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPickTrigger, () => this.goToClock(r, group))
+              );
+              mesh.actionManager.registerAction(
+                new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPointerOverTrigger, () => setHover(true))
+              );
+              mesh.actionManager.registerAction(
+                new BABYLON.ExecuteCodeAction(BABYLON.ActionManager.OnPointerOutTrigger, () => setHover(false))
+              );
+            });
+          });
+        }
+
+        /* ============ 遷移アニメーション ============ */
+        setFade(on) {
+          document.getElementById("fadeOverlay").classList.toggle("show", on);
+        }
+        showMapUI(on) {
+          document.getElementById("mapTitle").classList.toggle("hidden", !on);
+        }
+        showClockUI(on) {
+          document.getElementById("backBtn").classList.toggle("hidden", !on);
+          document.getElementById("regionLabel").classList.toggle("hidden", !on);
+          document.getElementById("outingBox").classList.toggle("hidden", !on);
+          if (!on) {
+            const note = document.getElementById("umbrellaNote");
+            note.classList.add("hidden");
+            note.style.opacity = "0";
+            this.resetOutingBox();
+          }
+        }
+
+        animateCamera(camera, to, ms) {
+          const ease = new BABYLON.CubicEase();
+          ease.setEasingMode(BABYLON.EasingFunction.EASINGMODE_EASEINOUT);
+          const anims = [];
+          if (to.radius !== undefined) anims.push(["radius", camera.radius, to.radius, false]);
+          if (to.alpha !== undefined) anims.push(["alpha", camera.alpha, to.alpha, false]);
+          if (to.beta !== undefined) anims.push(["beta", camera.beta, to.beta, false]);
+          if (to.target !== undefined) anims.push(["target", camera.target.clone(), to.target, true]);
+          anims.forEach(([prop, from, dest, isVec]) => {
+            BABYLON.Animation.CreateAndStartAnimation(
+              "cam_" + prop, camera, prop, 60, (ms / 1000) * 60,
+              from, dest,
+              BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT, ease
+            );
+          });
+        }
+
+        async goToClock(r, pinGroup) {
+          if (this.view !== "map") return;
+          this.view = "transition";
+          this.canvas.style.cursor = "default";
+          document.getElementById("hoverName").style.opacity = "0";
+          this.showMapUI(false);
+
+          // 1) クリックした地域へズームイン
+          const worldPos = pinGroup.getAbsolutePosition();
+          this.animateCamera(this.map.camera, { target: worldPos, radius: 6 }, 600);
+          await this.sleep(520);
+
+          // 2) 暗転
+          this.setFade(true);
+          await this.sleep(500);
+
+          // 3) 時計シーンを用意し、地域天気をセット
+          if (!this.clock) this.clock = await this.buildClockScene();
+          await this.clock.setRegion(r);
+
+          // 時計カメラを少し引いた状態から始める（フェードイン中に寄る）
+          this.clock.camera.radius = 22;
+          this.activeScene = this.clock.scene;
+          this.view = "clock";
+
+          // 地図カメラは元の位置に戻しておく（次回のため）
+          this.animateCamera(this.map.camera, this.mapCameraHome, 10);
+
+          // 4) フェードイン＋時計へ寄る
+          this.setFade(false);
+          this.animateCamera(this.clock.camera, { radius: 15 }, 900);
+          document.getElementById("regionLabel").textContent = `${r.region}（${r.city}）`;
+          this.showClockUI(true);
+        }
+
+        async goToMap() {
+          if (this.view !== "clock") return;
+          this.view = "transition";
+          this.showClockUI(false);
+
+          // 暗転
+          this.setFade(true);
+          await this.sleep(500);
+
+          // 地図へ戻す
+          this.activeScene = this.map.scene;
+          this.map.camera.radius = 26;
+          this.view = "map";
+
+          this.setFade(false);
+          this.animateCamera(this.map.camera, this.mapCameraHome, 900);
+          this.showMapUI(true);
+        }
+
+        /* ============ 時計シーン ============ */
+        async buildClockScene() {
+          const scene = new BABYLON.Scene(this.engine);
+          scene.clearColor = new BABYLON.Color4(0, 0, 0, 0);
+
+          const camera = new BABYLON.ArcRotateCamera("clockCam", -Math.PI / 2, Math.PI / 2, 15, BABYLON.Vector3.Zero(), scene);
+          camera.setTarget(BABYLON.Vector3.Zero());
+          camera.attachControl(this.canvas, true);
+          camera.upperBetaLimit = 0.59 * Math.PI;
+          camera.maxZ = 0.0;
+
+          const state = { weather: null };
+
+          const light = new BABYLON.DirectionalLight("Sun", new BABYLON.Vector3(0, 1, 0).normalize(), scene);
+          light.intensity = Math.PI;
+
+          const defaultRenderingPipeline = new BABYLON.DefaultRenderingPipeline("Default", true, scene, [camera]);
+          defaultRenderingPipeline.imageProcessingEnabled = true;
+          defaultRenderingPipeline.imageProcessing.ditheringEnabled = true;
+          defaultRenderingPipeline.imageProcessing.toneMappingEnabled = true;
+          defaultRenderingPipeline.imageProcessing.toneMappingType = 0.1;
+
+          const atmosphere = new ADDONS.Atmosphere("Atmosphere", scene, [light]);
+          atmosphere.additionalDiffuseSkyIrradianceIntensity = 0.01;
+          atmosphere.minimumMultiScatteringIntensity = 0.2;
+
+          // Rain particles
+          const rainSystem = new BABYLON.ParticleSystem("rain", 5000, scene);
+          rainSystem.particleTexture = new BABYLON.Texture("https://assets.babylonjs.com/textures/flare.png", scene);
+          rainSystem.emitter = new BABYLON.Vector3(0, 25, 0);
+          rainSystem.minEmitBox = new BABYLON.Vector3(-30, 0, -30);
+          rainSystem.maxEmitBox = new BABYLON.Vector3(30, 0, 30);
+          rainSystem.color1 = new BABYLON.Color4(0.7, 0.85, 1.0, 0.8);
+          rainSystem.color2 = new BABYLON.Color4(0.5, 0.7, 0.95, 0.6);
+          rainSystem.colorDead = new BABYLON.Color4(0.5, 0.7, 1.0, 0.0);
+          rainSystem.minSize = 0.08;
+          rainSystem.maxSize = 0.12;
+          rainSystem.minScaleX = 0.15;
+          rainSystem.maxScaleX = 0.25;
+          rainSystem.minScaleY = 4.0;
+          rainSystem.maxScaleY = 7.0;
+          rainSystem.minLifeTime = 0.4;
+          rainSystem.maxLifeTime = 0.9;
+          rainSystem.gravity = new BABYLON.Vector3(0, -30, 0);
+          rainSystem.direction1 = new BABYLON.Vector3(-0.3, -1, 0.2);
+          rainSystem.direction2 = new BABYLON.Vector3(0.3, -1, -0.2);
+          rainSystem.minEmitPower = 10;
+          rainSystem.maxEmitPower = 18;
+          rainSystem.updateSpeed = 0.01;
+
+          // Snow particles
+          const snowSystem = new BABYLON.ParticleSystem("snow", 1500, scene);
+          snowSystem.particleTexture = new BABYLON.Texture("https://assets.babylonjs.com/textures/flare.png", scene);
+          snowSystem.emitter = new BABYLON.Vector3(0, 25, 0);
+          snowSystem.minEmitBox = new BABYLON.Vector3(-30, 0, -30);
+          snowSystem.maxEmitBox = new BABYLON.Vector3(30, 0, 30);
+          snowSystem.color1 = new BABYLON.Color4(1.0, 1.0, 1.0, 0.9);
+          snowSystem.color2 = new BABYLON.Color4(0.9, 0.95, 1.0, 0.7);
+          snowSystem.colorDead = new BABYLON.Color4(1, 1, 1, 0.0);
+          snowSystem.minSize = 0.15;
+          snowSystem.maxSize = 0.4;
+          snowSystem.minLifeTime = 3.0;
+          snowSystem.maxLifeTime = 7.0;
+          snowSystem.emitRate = 400;
+          snowSystem.gravity = new BABYLON.Vector3(0, -1.5, 0);
+          snowSystem.direction1 = new BABYLON.Vector3(-2, -1, 2);
+          snowSystem.direction2 = new BABYLON.Vector3(2, -1, -2);
+          snowSystem.minAngularSpeed = 0;
+          snowSystem.maxAngularSpeed = Math.PI;
+          snowSystem.minEmitPower = 1;
+          snowSystem.maxEmitPower = 3;
+          snowSystem.updateSpeed = 0.004;
+
+          const lightningLight = new BABYLON.PointLight("lightning", new BABYLON.Vector3(0, 20, 0), scene);
+          lightningLight.diffuse = new BABYLON.Color3(0.9, 0.9, 1.0);
+          lightningLight.specular = new BABYLON.Color3(1, 1, 1);
+          lightningLight.intensity = 0;
+          let lightningTimeout = null;
+
+          const stopAllWeatherEffects = () => {
+            rainSystem.stop();
+            snowSystem.stop();
+            if (lightningTimeout) { clearTimeout(lightningTimeout); lightningTimeout = null; }
+            lightningLight.intensity = 0;
+          };
+
+          const scheduleLightning = () => {
+            const delay = 2000 + Math.random() * 8000;
+            lightningTimeout = setTimeout(() => {
+              lightningLight.intensity = 25;
+              setTimeout(() => {
+                lightningLight.intensity = 0;
+                setTimeout(() => {
+                  lightningLight.intensity = 18;
+                  setTimeout(() => {
+                    lightningLight.intensity = 0;
+                    scheduleLightning();
+                  }, 60 + Math.random() * 80);
+                }, 80 + Math.random() * 120);
+              }, 40 + Math.random() * 60);
+            }, delay);
+          };
+
+          let weatherExposureScale = 1;
+
+          const applyWeatherToAtmosphere = () => {
+            const weathercode = state.weather?.current_weather?.weathercode ?? 1;
+            const getweather = this.getWeatherLabel(weathercode);
+
+            const exposureScaleByWeather = {
+              'Sunny': 1.0, 'Partly Cloudy': 0.7, 'Cloudy': 0.5, 'Fog': 0.5,
+              'Rain': 0.45, 'Snow': 0.6, 'Thunderstorm': 0.35,
+            };
+            weatherExposureScale = exposureScaleByWeather[getweather] ?? 1.0;
+
+            stopAllWeatherEffects();
+
+            switch (getweather) {
+              case 'Sunny':
+                atmosphere.physicalProperties.mieScatteringScale = 1.0;
+                atmosphere.physicalProperties.ozoneAbsorptionScale = 2.4;
+                atmosphere.multiScatteringIntensity = 1;
+                break;
+              case 'Partly Cloudy':
+                atmosphere.physicalProperties.mieScatteringScale = 10.0;
+                atmosphere.physicalProperties.ozoneAbsorptionScale = 2.4;
+                atmosphere.multiScatteringIntensity = 0.5;
+                break;
+              case 'Cloudy':
+                atmosphere.physicalProperties.mieScatteringScale = 20.0;
+                atmosphere.physicalProperties.ozoneAbsorptionScale = 2.4;
+                atmosphere.multiScatteringIntensity = 0.2;
+                break;
+              case 'Rain':
+                atmosphere.physicalProperties.mieScatteringScale = 40.0;
+                atmosphere.physicalProperties.ozoneAbsorptionScale = 2.4;
+                atmosphere.multiScatteringIntensity = 0;
+                rainSystem.emitRate = 3000;
+                rainSystem.start();
+                break;
+              case 'Snow':
+                atmosphere.physicalProperties.mieScatteringScale = 60.0;
+                atmosphere.physicalProperties.ozoneAbsorptionScale = 2.4;
+                atmosphere.multiScatteringIntensity = 0;
+                snowSystem.start();
+                break;
+              case 'Thunderstorm':
+                atmosphere.physicalProperties.mieScatteringScale = 100.0;
+                atmosphere.physicalProperties.ozoneAbsorptionScale = 10.0;
+                atmosphere.multiScatteringIntensity = 0;
+                rainSystem.emitRate = 6000;
+                rainSystem.start();
+                scheduleLightning();
+                break;
+              default:
+                atmosphere.physicalProperties.mieScatteringScale = 1.0;
+                atmosphere.physicalProperties.ozoneAbsorptionScale = 2.4;
+                atmosphere.multiScatteringIntensity = 1;
+            }
+          };
+
+          atmosphere.isLinearSpaceComposition = true;
+          atmosphere.isLinearSpaceLight = true;
+          atmosphere.isAerialPerspectiveLutEnabled = false;
+          atmosphere.isSkyViewLutEnabled = false;
+
+          scene.onBeforeRenderObservable.add(() => {
+            const { hour, hours } = this.getCurrentTimeInfo();
+            const sunAngle = (hours / 24) * 2 * Math.PI - Math.PI / 2;
+            const x = Math.cos(sunAngle);
+            const y = Math.sin(sunAngle);
+            light.direction.copyFromFloats(x, -y, 0);
+
+            const minExp = 0.1;
+            const maxExp = 6;
+            let exposure = minExp;
+            if (hour >= 5 && hour <= 18) {
+              const t = (hour - 5) / (18 - 5);
+              const k = Math.sin(t * Math.PI);
+              exposure = minExp + (maxExp - minExp) * k * weatherExposureScale;
+            }
+            defaultRenderingPipeline.imageProcessing.exposure = exposure;
+          });
+
+          await this.createClockText(scene, camera, () => state.weather);
+
+          const meshesToMerge = [];
+
+          const cylinder = BABYLON.MeshBuilder.CreateCylinder("cylinder", { height: 12, diameter: 7, tessellation: 60 }, scene);
+          cylinder.position.set(0, -0.7, 1.9);
+          cylinder.rotation.z = this.toRadians(90);
+
+          const cylinderMaterial = new BABYLON.StandardMaterial("cylindermat", scene);
+          cylinderMaterial.diffuseTexture = new BABYLON.VideoTexture("vidtex", "movie.mp4", scene);
+          cylinderMaterial.emissiveColor = new BABYLON.Color3(1, 1, 1);
+          cylinder.material = cylinderMaterial;
+
+          const cylinderTop = BABYLON.MeshBuilder.CreateCylinder("cylindertop", { height: 0.7, diameter: 8, tessellation: 60 }, scene);
+          cylinderTop.position.y = 6.8;
+
+          const clockBodyMaterial = new BABYLON.StandardMaterial("clockBodyMat", scene);
+          clockBodyMaterial.diffuseColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+          clockBodyMaterial.specularColor = new BABYLON.Color3(1, 1, 1);
+          clockBodyMaterial.specularPower = 8;
+          clockBodyMaterial.emissiveColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+          cylinderTop.material = clockBodyMaterial;
+          meshesToMerge.push(cylinderTop);
+
+          const cylinderBottom = cylinderTop.clone("cylinderbottom");
+          cylinderBottom.position.y = -5.8;
+          meshesToMerge.push(cylinderBottom);
+
+          this.createClockLines(scene, meshesToMerge);
+
+          const mergedMesh = BABYLON.Mesh.MergeMeshes(meshesToMerge, true, true, undefined, false, true);
+          mergedMesh.position.set(0.5, -0.8, 1.9);
+          mergedMesh.rotation.z = this.toRadians(90);
+          mergedMesh.name = "clockBody";
+
+          this.createGround(scene, () => state.weather);
+
+          // 地域を切り替える
+          const setRegion = async (r) => {
+            state.weather = await this.fetchWeather(r.latitude, r.longitude);
+            state.weather = this.applyDemoOverride(state.weather);
+            applyWeatherToAtmosphere();
+            this._current = { r, weather: state.weather };
+            // this.updateUmbrellaNote(state.weather); // 傘メモ（コード）
+            this.resetOutingBox();                  // お出かけ入力はリセット
+          };
+
+          return { scene, camera, setRegion };
+        }
+
+        createClockLines(scene, meshesToMerge) {
+          const hiddenLineIndices = new Set([54, 55, 56, 57, 58, 59, 0, 1, 2, 3, 4, 5, 6]);
+          for (let i = 0; i < 60; i++) {
+            if (hiddenLineIndices.has(i)) continue;
+            const rad = this.toRadians(i * (360 / 60));
+            const tube = BABYLON.MeshBuilder.CreateBox(`clockline_${i}`, { height: 13, width: 0.4, depth: 0.025 }, scene);
+            tube.rotation.y = rad;
+            tube.position.x = -(60 / 16) * Math.sin(rad);
+            tube.position.y = 0.5;
+            tube.position.z = -(60 / 16) * Math.cos(rad);
+            const tubeMaterial = new BABYLON.StandardMaterial(`tubemat_${i}`, scene);
+            tubeMaterial.diffuseColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+            tubeMaterial.specularColor = new BABYLON.Color3(1, 1, 1);
+            tubeMaterial.specularPower = 8;
+            tubeMaterial.emissiveColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+            tubeMaterial.alpha = 1;
+            tube.material = tubeMaterial;
+            meshesToMerge.push(tube);
+          }
+        }
+
+        async createClockText(scene, camera, getWeather) {
+          const sdfFontDefinition = await (await fetch("https://assets.babylonjs.com/fonts/roboto-regular.json")).text();
+          const fontAsset = new ADDONS.FontAsset(sdfFontDefinition, "https://assets.babylonjs.com/fonts/roboto-regular.png");
+
+          let textRenderer = null;
+          let currentText = "";
+          let updating = false;
+
+          const formatTime = () => {
+            const now = new Date();
+            const hh = String(now.getHours()).padStart(2, "0");
+            const mm = String(now.getMinutes()).padStart(2, "0");
+            const ss = String(now.getSeconds()).padStart(2, "0");
+            return `${hh}:${mm}:${ss}`;
+          };
+
+          const rebuildText = async (text) => {
+            const weather = getWeather();
+            const temperature = weather?.current_weather?.temperature ?? "--";
+            const windspeed = weather?.current_weather?.windspeed ?? "--";
+            const weatherLabel = weather?.current_weather
+              ? this.getWeatherLabel(weather.current_weather.weathercode)
+              : "Unknown";
+
+            const newRenderer = await ADDONS.TextRenderer.CreateTextRendererAsync(fontAsset, this.engine);
+            newRenderer.addParagraph(
+              `Time: ${text}
+                     Temperature: ${temperature}F
+                     Weather: ${weatherLabel}
+                     WindSpeed: ${windspeed} m/s`, { letterSpacing: 5 });
+            newRenderer.color = new BABYLON.Color4(0.1, 0.98, 0.1);
+            newRenderer.ignoreDepthBuffer = false;
+
+            if (textRenderer && typeof textRenderer.dispose === "function") textRenderer.dispose();
+            textRenderer = newRenderer;
+          };
+
+          currentText = formatTime();
+          await rebuildText(currentText);
+
+          scene.onAfterRenderObservable.add(() => {
+            if (textRenderer && camera.position.z < 0) {
+              textRenderer.render(camera.getViewMatrix(), camera.getProjectionMatrix());
+            }
+          });
+
+          setInterval(async () => {
+            if (updating) return;
+            const newText = formatTime();
+            if (newText === currentText) return;
+            updating = true;
+            try {
+              currentText = newText;
+              await rebuildText(newText);
+            } finally {
+              updating = false;
+            }
+          }, 1000);
+        }
+
+        createGround(scene, getWeather) {
+          const terrain = new BABYLON.DynamicTerrain("terrain", { terrainSub: 800 }, scene);
+
+          // 一覧ページの海と同じ WaterMaterial で水面にする
+          const water = new BABYLON.WaterMaterial("clockWater", scene, new BABYLON.Vector2(1024, 1024));
+          water.backFaceCulling = true;
+          water.bumpTexture = new BABYLON.Texture("https://assets.babylonjs.com/textures/waterbump.png", scene);
+          // 二重のさざ波＋フレネル分離で自然に。波は広め(waveLength大)にして
+          // 水平に近い視点でも地平線がギザギザにならないようにする。
+          water.bumpSuperimpose = true;
+          water.fresnelSeparate = true;
+          // 波長を小さくして繰り返しを増やし、菱形のタイル模様を細かいさざ波に馴染ませる
+          water.waveLength = 0.1;
+          water.windDirection = new BABYLON.Vector2(1, 0.4);
+          water.waterColor = new BABYLON.Color3(0.05, 0.2, 0.38);
+          // 空の映り込み先が無いため水色を主体に（0=反射主体で暗くなる, 1=水色主体）
+          water.colorBlendFactor = 0.7;
+          water.waterColor2 = new BABYLON.Color3(0.08, 0.28, 0.42);
+          water.colorBlendFactor2 = 0.7;
+
+          // 時計本体などを水面に映り込ませる
+          scene.meshes.forEach((m) => {
+            if (m !== terrain.mesh) water.addToRenderList(m);
+          });
+
+          // 遠くの水面を空へ溶け込ませ、地平線のギザギザを隠す（リアリティ向上）
+          scene.fogMode = BABYLON.Scene.FOGMODE_EXP2;
+          scene.fogColor = new BABYLON.Color3(0.62, 0.73, 0.85);
+          scene.fogDensity = 0.012;
+
+          terrain.mesh.material = water;
+          terrain.mesh.position.y = -6;
+          terrain.useCustomVertexFunction = true;
+          terrain.computeNormals = true; // 水面のライティング用に法線を再計算
+          terrain.refreshEveryFrame = true;
+
+          let t = 0;
+          terrain.updateVertex = (vertex) => {
+            const weather = getWeather();
+            const windspeed = weather?.current_weather?.windspeed ?? 5;
+            // 頂点変位は「ゆるやかなうねり」程度に抑える（大きくするとポリゴン感が出る）。
+            // 波長を長め(/24)にして分割数に対し滑らかに、振幅も控えめ＆上限でクランプ。
+            const amp = Math.min(0.05 + windspeed * 0.02, 0.6);
+            vertex.position.y =
+              amp *
+              Math.sin((vertex.position.x + t) / 24) *
+              Math.cos((vertex.position.z + 5 * t) / 24);
+          };
+          terrain.update(true);
+
+          scene.onBeforeRenderObservable.add(() => {
+            const { hour } = this.getCurrentTimeInfo();
+            const windspeed = getWeather()?.current_weather?.windspeed ?? 5;
+
+            // 「荒れ」の表現はポリゴンにならない WaterMaterial 側（ピクセル単位）で行う。
+            // 値を上げすぎると地平線がギザギザになるので控えめ＆上限クランプ。
+            water.windForce = -(2 + windspeed * 0.4); // 強風ほど流れが速い
+            water.waveHeight = Math.min(0.02 + windspeed * 0.008, 0.2); // さざ波の揺らぎの強さ
+            water.bumpHeight = Math.min(0.1 + windspeed * 0.015, 0.45); // 強風ほど細かい波紋を強調
+            water.waveSpeed = 1 + windspeed * 0.3; // 波の伝播速度
+
+            // 昼は深い青、夜は明るい水色で水面の色を切り替える
+            water.waterColor =
+              hour >= 5 && hour <= 18
+                ? new BABYLON.Color3(0.06, 0.24, 0.44)
+                : new BABYLON.Color3(0.0, 0.35, 0.55);
+            t += 0.5;
+          });
+        }
+      }
+
+      document.addEventListener("DOMContentLoaded", () => { window.app = new WeatherMapApp(); });
+    </script>
+  </body>
+</html>

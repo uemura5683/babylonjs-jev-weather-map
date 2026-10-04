@@ -1,0 +1,12 @@
+{
+  "name": "weather-map-jev-poc",
+  "version": "0.1.0",
+  "private": true,
+  "description": "日本列島 天気マップ + Jev(TypeSafe)で雨×風速を判定するPoC",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env server.js"
+  },
+  "engines": {
+    "node": ">=20.6"
+  }
+}
